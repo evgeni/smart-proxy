@@ -1,0 +1,29 @@
+---
+name: Build container
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  build:
+    name: Build container on comment
+    if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, '/containerbuild') }}
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: ghcr.io/${{ github.repository }}:pr${{ github.event.issue.number }}
+      PR_NUMBER: ${{ github.event.issue.number }}
+      COPR: theforeman-smart-proxy-949
+    steps:
+      - run: |
+          echo "# Packit container for PR https://github.com/${{ github.repository }}/pull/$PR_NUMBER
+          FROM quay.io/foreman/foreman-proxy:nightly
+          USER 0
+          RUN dnf copr enable -y packit/${COPR} rhel-10-x86_64 && \
+              dnf repository-packages -y copr:copr.fedorainfracloud.org:packit:${COPR} upgrade && \
+              dnf clean all
+          USER foreman-proxy" > Containerfile
+      - run: podman build -t $IMAGE_NAME .
+      - run: podman push --creds=${{ github.actor }}:${{ github.token }} $IMAGE_NAME
+      - run: gh pr comment $PR_NUMBER --repo ${{ github.repository }} --body "Container is available at ${IMAGE_NAME}"
+        env:
+          GH_TOKEN: ${{ github.token }}
